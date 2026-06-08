@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: SqlGenie
+  datasource:
+    url: ${DB_MAIN_URL:jdbc:postgresql://localhost:5432/main}
+    username: ${DB_MAIN_USER:postgres}
+    password: ${DB_MAIN_PASS:postgres}
+    driver-class-name: org.postgresql.Driver
+    readonly:
+      url: ${DB_READONLY_URL:jdbc:postgresql://localhost:5432/readonly}
+      username: ${DB_READONLY_USER:postgres}
+      password: ${DB_READONLY_PASS:postgres}
+      driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+jwt:
+  secret: ${JWT_SECRET:your_default_jwt_secret_key_needs_to_be_long_enough_for_hs256_algo_123456}
+
+groq:
+  api-key: ${GROQ_API_KEY:your_default_groq_api_key}
