@@ -1,6 +1,9 @@
 spring:
   application:
     name: SqlGenie
+  sql:
+    init:
+      mode: always
   datasource:
     url: ${DB_MAIN_URL:jdbc:postgresql://localhost:5432/main}
     username: ${DB_MAIN_USER:postgres}
