@@ -1,19 +1,28 @@
 package com.sqlgenie.service;
 
+import com.sqlgenie.exception.SqlGenerationException;
+import com.sqlgenie.model.ValidationResult;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Service
 public class LlmService {
 
     private final PromptBuilderService promptBuilderService;
+    private final SqlValidatorService sqlValidatorService;
     private final ChatLanguageModel chatLanguageModel;
 
-    public LlmService(PromptBuilderService promptBuilderService) {
+    public LlmService(PromptBuilderService promptBuilderService, SqlValidatorService sqlValidatorService) {
         this.promptBuilderService = promptBuilderService;
+        this.sqlValidatorService = sqlValidatorService;
         String apiKey = System.getenv("GROQ_API_KEY");
         if (apiKey == null || apiKey.isEmpty()) {
             apiKey = "dummy";
@@ -29,12 +38,30 @@ public class LlmService {
     public String generateSql(String naturalLanguageQuery) {
         String systemPrompt = promptBuilderService.buildSystemPrompt();
         
-        SystemMessage sysMessage = SystemMessage.from(systemPrompt);
-        UserMessage usrMessage = UserMessage.from(naturalLanguageQuery);
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(SystemMessage.from(systemPrompt));
+        messages.add(UserMessage.from(naturalLanguageQuery));
         
-        String responseText = chatLanguageModel.generate(sysMessage, usrMessage).content().text();
+        String lastAttemptedSql = null;
+        int maxAttempts = 3;
         
-        return cleanSql(responseText);
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            String responseText = chatLanguageModel.generate(messages).content().text();
+            lastAttemptedSql = cleanSql(responseText);
+            
+            ValidationResult validationResult = sqlValidatorService.validate(lastAttemptedSql);
+            if (validationResult.isValid()) {
+                return lastAttemptedSql;
+            }
+            
+            if (attempt < maxAttempts) {
+                messages.add(AiMessage.from(responseText));
+                String errorMessage = "Your previous SQL was invalid: " + lastAttemptedSql + ". Error: " + validationResult.getError() + ". Please fix and return only raw SQL.";
+                messages.add(UserMessage.from(errorMessage));
+            }
+        }
+        
+        throw new SqlGenerationException("Failed to generate valid SQL after " + maxAttempts + " attempts.", lastAttemptedSql);
     }
 
     private String cleanSql(String sql) {
