@@ -8,6 +8,7 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ public class LlmService {
                 .build();
     }
 
+    @Cacheable(value = "nl-sql-cache", key = "#naturalLanguageQuery")
     public String generateSql(String naturalLanguageQuery) {
         String systemPrompt = promptBuilderService.buildSystemPrompt();
         
