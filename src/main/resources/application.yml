@@ -23,6 +23,7 @@ spring:
 
 jwt:
   secret: ${JWT_SECRET:your_default_jwt_secret_key_needs_to_be_long_enough_for_hs256_algo_123456}
+  expiration: ${JWT_EXPIRATION:86400000}
 
 groq:
   api-key: ${GROQ_API_KEY:your_default_groq_api_key}
