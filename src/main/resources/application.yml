@@ -1,3 +1,8 @@
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+
 spring:
   application:
     name: SqlGenie
