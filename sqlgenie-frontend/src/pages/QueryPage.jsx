@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axiosInstance from '../api/axios';
 import { useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
@@ -11,15 +11,31 @@ const QueryPage = () => {
   const [isEditingSql, setIsEditingSql] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [queryResults, setQueryResults] = useState(null);
+  const [queryHistory, setQueryHistory] = useState([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const navigate = useNavigate();
+
+  const fetchHistory = async () => {
+    try {
+      const response = await axiosInstance.get('/api/query/history');
+      setQueryHistory(response.data);
+    } catch (err) {
+      console.error('Failed to fetch history:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     navigate('/login');
   };
 
-  const handleRunQuery = async () => {
-    if (!inputValue.trim()) return;
+  const handleRunQuery = async (overrideInput) => {
+    const queryText = typeof overrideInput === 'string' ? overrideInput : inputValue;
+    if (!queryText.trim()) return;
     setIsLoading(true);
     setErrorMsg('');
     setGeneratedSql('');
@@ -28,12 +44,13 @@ const QueryPage = () => {
     
     try {
       const response = await axiosInstance.post('/api/query', {
-        naturalLanguage: inputValue
+        naturalLanguage: queryText
       });
       const sql = response.data.sql || response.data.executedSql || response.data;
       setGeneratedSql(typeof sql === 'string' ? sql : JSON.stringify(sql, null, 2));
       setEditedSql(typeof sql === 'string' ? sql : JSON.stringify(sql, null, 2));
       setQueryResults(response.data);
+      fetchHistory();
     } catch (err) {
       setErrorMsg(err.response?.data?.message || err.message || 'An error occurred while running the query');
     } finally {
@@ -52,6 +69,7 @@ const QueryPage = () => {
         sqlOverride: editedSql
       });
       setQueryResults(response.data);
+      fetchHistory();
     } catch (err) {
       setErrorMsg(err.response?.data?.message || err.message || 'An error occurred while re-running the query');
     } finally {
@@ -165,8 +183,8 @@ const QueryPage = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', backgroundColor: '#ffffff', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb', fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column' }}>
+      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', backgroundColor: '#ffffff', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', zIndex: 10 }}>
         <h1 style={{ margin: 0, color: '#111827', fontSize: '1.5rem', fontWeight: 'bold' }}>SqlGenie</h1>
         <button 
           onClick={handleLogout}
@@ -176,8 +194,54 @@ const QueryPage = () => {
         </button>
       </nav>
 
-      <main style={{ maxWidth: '800px', margin: '3rem auto', padding: '0 1rem' }}>
-        {errorMsg && (
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {isSidebarOpen && (
+          <aside style={{ width: '260px', flexShrink: 0, backgroundColor: '#ffffff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+            <div style={{ padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, backgroundColor: '#ffffff', zIndex: 5 }}>
+              <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: '600', color: '#374151' }}>History</h2>
+              <button 
+                onClick={() => setIsSidebarOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '0.875rem' }}
+              >
+                Clear
+              </button>
+            </div>
+            <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {queryHistory.map((item, idx) => (
+                <div 
+                  key={idx} 
+                  onClick={() => {
+                    setInputValue(item.naturalLanguage);
+                    handleRunQuery(item.naturalLanguage);
+                  }}
+                  style={{ padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', cursor: 'pointer', backgroundColor: '#f9fafb', transition: 'background-color 0.2s' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: item.successful ? '#10b981' : '#ef4444' }} />
+                    <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                      {new Date(item.executedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.875rem', color: '#374151', fontWeight: '500', marginBottom: '0.5rem', wordBreak: 'break-word' }}>
+                    {item.naturalLanguage.length > 50 ? item.naturalLanguage.substring(0, 50) + '...' : item.naturalLanguage}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                    {item.rowCount !== undefined ? `${item.rowCount} rows` : '0 rows'}
+                  </div>
+                </div>
+              ))}
+              {queryHistory.length === 0 && (
+                <div style={{ color: '#6b7280', fontSize: '0.875rem', textAlign: 'center', marginTop: '1rem' }}>No history yet</div>
+              )}
+            </div>
+          </aside>
+        )}
+
+        <main style={{ flex: 1, overflowY: 'auto', padding: '2rem 1rem' }}>
+          <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+            {errorMsg && (
           <div style={{ backgroundColor: '#fee2e2', borderLeft: '4px solid #ef4444', color: '#b91c1c', padding: '1rem', marginBottom: '1.5rem', borderRadius: '0.375rem' }}>
             {errorMsg}
           </div>
@@ -228,8 +292,10 @@ const QueryPage = () => {
           </div>
         )}
 
-        {renderResults()}
-      </main>
+            {renderResults()}
+          </div>
+        </main>
+      </div>
     </div>
   );
 };
