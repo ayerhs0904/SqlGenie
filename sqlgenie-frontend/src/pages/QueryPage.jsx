@@ -13,7 +13,15 @@ const QueryPage = () => {
   const [queryResults, setQueryResults] = useState(null);
   const [queryHistory, setQueryHistory] = useState([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [toastMsg, setToastMsg] = useState('');
   const navigate = useNavigate();
+
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => {
+      setToastMsg('');
+    }, 3000);
+  };
 
   const fetchHistory = async () => {
     try {
@@ -51,6 +59,9 @@ const QueryPage = () => {
       setEditedSql(typeof sql === 'string' ? sql : JSON.stringify(sql, null, 2));
       setQueryResults(response.data);
       fetchHistory();
+      if (response.data && response.data.rows) {
+        showToast(`Query returned ${response.data.rows.length} rows`);
+      }
     } catch (err) {
       setErrorMsg(err.response?.data?.message || err.message || 'An error occurred while running the query');
     } finally {
@@ -70,6 +81,9 @@ const QueryPage = () => {
       });
       setQueryResults(response.data);
       fetchHistory();
+      if (response.data && response.data.rows) {
+        showToast(`Query returned ${response.data.rows.length} rows`);
+      }
     } catch (err) {
       setErrorMsg(err.response?.data?.message || err.message || 'An error occurred while re-running the query');
     } finally {
@@ -82,6 +96,62 @@ const QueryPage = () => {
       handleRunQuery();
     }
   };
+
+  const downloadCSV = () => {
+    if (!queryResults || !queryResults.columns || !queryResults.rows) return;
+    const { columns, rows } = queryResults;
+    const csvContent = [
+      columns.join(','),
+      ...rows.map(row => columns.map(col => {
+        let cell = row[col] === null ? '' : String(row[col]);
+        cell = cell.replace(/"/g, '""');
+        if (cell.search(/("|,|\n)/g) >= 0) {
+          cell = `"${cell}"`;
+        }
+        return cell;
+      }).join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'query_results.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const renderSkeletonLoader = () => (
+    <div style={{ padding: '2rem', backgroundColor: '#ffffff', borderRadius: '0.5rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', marginTop: '2rem' }}>
+      <style>
+        {`
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+          }
+          .skeleton-bar {
+            height: 1.5rem;
+            background-color: #e5e7eb;
+            border-radius: 0.25rem;
+            margin-bottom: 1rem;
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+          }
+        `}
+      </style>
+      <div className="skeleton-bar" style={{ width: '40%' }}></div>
+      <div className="skeleton-bar" style={{ width: '100%' }}></div>
+      <div className="skeleton-bar" style={{ width: '80%' }}></div>
+    </div>
+  );
+
+  const renderEmptyState = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 2rem', marginTop: '2rem', backgroundColor: '#ffffff', borderRadius: '0.5rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', textAlign: 'center' }}>
+      <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🗄️</div>
+      <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#374151', margin: '0 0 0.5rem 0' }}>Ask your database anything</h2>
+      <p style={{ color: '#6b7280', fontSize: '1rem', margin: 0 }}>Type a question in plain English above and press Run Query</p>
+    </div>
+  );
 
   const renderResults = () => {
     if (!queryResults || !queryResults.columns || !queryResults.rows) return null;
@@ -155,12 +225,15 @@ const QueryPage = () => {
         <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '0.5rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h3 style={{ margin: 0, color: '#374151' }}>Query Results</h3>
-            <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>Showing {rows.length} rows</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>Showing {rows.length} rows</span>
+              <button onClick={downloadCSV} style={{ padding: '0.5rem 1rem', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: '500', fontSize: '0.875rem' }}>Download CSV</button>
+            </div>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', maxHeight: '400px', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: '#f3f4f6' }}>
+                <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
                   {columns.map(col => (
                     <th key={col} style={{ padding: '0.75rem 1rem', color: '#374151', fontWeight: '600' }}>{col}</th>
                   ))}
@@ -265,8 +338,12 @@ const QueryPage = () => {
           </button>
         </div>
 
-        {generatedSql && (
-          <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '0.5rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }}>
+        {isLoading && renderSkeletonLoader()}
+        
+        {!isLoading && !generatedSql && renderEmptyState()}
+
+        {!isLoading && generatedSql && (
+          <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '0.5rem', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)', marginBottom: '2rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#374151' }}>Generated SQL</label>
             <textarea 
               readOnly={!isEditingSql}
@@ -292,8 +369,13 @@ const QueryPage = () => {
           </div>
         )}
 
-            {renderResults()}
+            {!isLoading && generatedSql && renderResults()}
           </div>
+          {toastMsg && (
+            <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', backgroundColor: '#10b981', color: 'white', padding: '1rem 1.5rem', borderRadius: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', zIndex: 50, transition: 'opacity 0.3s' }}>
+              {toastMsg}
+            </div>
+          )}
         </main>
       </div>
     </div>
